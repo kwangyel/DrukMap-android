@@ -20,9 +20,13 @@ import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.mapsforge.MapsForgeTileProvider;
 import org.osmdroid.mapsforge.MapsForgeTileSource;
+import org.osmdroid.tileprovider.tilesource.ITileSource;
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase;
+import org.osmdroid.tileprovider.tilesource.XYTileSource;
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver;
 import org.osmdroid.tileprovider.util.StorageUtils;
 import org.osmdroid.util.GeoPoint;
+import org.osmdroid.util.MapTileIndex;
 import org.osmdroid.views.MapView;
 
 import java.io.File;
@@ -91,7 +95,22 @@ public class MainActivity extends AppCompatActivity {
                     new SimpleRegisterReceiver(this.getApplication()),
                     fromFiles, null);
 
-            mapView.setTileProvider(forge);
+//            mapView.setTileProvider(forge);
+
+            OnlineTileSourceBase googleSat = new XYTileSource("google sat tiles",
+                    0,22,256,".png",new String[]{
+                    "http://mt0.google.com",
+                    "http://mt1.google.com",
+                    "http://mt2.google.com",
+                    "http://mt3.google.com"
+            }){
+                @Override
+                public String getTileURLString(long pMapTileIndex) {
+                    return getBaseUrl() + "/vt/lyrs=s&hl=en&x=" + MapTileIndex.getX(pMapTileIndex) + "&y=" + MapTileIndex.getY(pMapTileIndex) + "&z=" + MapTileIndex.getZoom(pMapTileIndex);
+                }
+            };
+            mapView.setTileSource(googleSat);
+
             mapController = mapView.getController();
             mapController.setZoom(8.0);
             mapController.setCenter(new GeoPoint(27.5142, 90.4336));
