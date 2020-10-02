@@ -13,6 +13,8 @@ import android.os.Environment;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.ImageButton;
 
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme;
 import org.mapsforge.map.rendertheme.XmlRenderTheme;
@@ -20,7 +22,6 @@ import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.mapsforge.MapsForgeTileProvider;
 import org.osmdroid.mapsforge.MapsForgeTileSource;
-import org.osmdroid.tileprovider.tilesource.ITileSource;
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase;
 import org.osmdroid.tileprovider.tilesource.XYTileSource;
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver;
@@ -45,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
     private MapView mapView;
     private IMapController mapController;
     AlertDialog alertDialog = null;
+    MapsForgeTileProvider forge = null;
 
 
     @Override
@@ -53,6 +55,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         mapView = (MapView) findViewById(R.id.mapview);
         MapsForgeTileSource.createInstance(this.getApplication());
+        ImageButton imgbtn = (ImageButton)findViewById(R.id.imageButton);
 
         Set<File> mapfiles = findMapFiles();
         File[] maps = new File[mapfiles.size()];
@@ -91,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             MapsForgeTileSource fromFiles = MapsForgeTileSource.createFromFiles(maps, theme, "rendertheme-v4");
-            MapsForgeTileProvider forge = new MapsForgeTileProvider(
+            forge = new MapsForgeTileProvider(
                     new SimpleRegisterReceiver(this.getApplication()),
                     fromFiles, null);
 
@@ -110,11 +113,21 @@ public class MainActivity extends AppCompatActivity {
                 }
             };
             mapView.setTileSource(googleSat);
+            mapView.setMultiTouchControls(true);
+            mapView.setBuiltInZoomControls(false);
 
             mapController = mapView.getController();
             mapController.setZoom(8.0);
             mapController.setCenter(new GeoPoint(27.5142, 90.4336));
         }
+
+
+        imgbtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mapView.setTileProvider(forge);
+            }
+        });
     }
     protected void copyToStorage(Context context){
         AssetManager assetManager = context.getAssets();
