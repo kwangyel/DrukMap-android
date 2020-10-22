@@ -1,11 +1,15 @@
 package com.example.drukmap;
 
 import android.Manifest;
+import android.content.ComponentName;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.Path;
+import android.icu.util.ICUUncheckedIOException;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 
 import androidx.appcompat.app.AlertDialog;
@@ -13,17 +17,21 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import android.os.Environment;
+import android.os.Handler;
+import android.os.IBinder;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.Toast;
 
+import com.example.drukmap.services.NavigationService;
+import com.example.drukmap.test.MockLocationEngine;
+import com.google.android.material.shape.ShapePath;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.ResponsePath;
-import com.graphhopper.Trip;
 import com.graphhopper.config.CHProfile;
 import com.graphhopper.config.Profile;
 import com.graphhopper.util.Instruction;
@@ -31,9 +39,6 @@ import com.graphhopper.util.InstructionList;
 import com.graphhopper.util.Parameters;
 import com.graphhopper.util.PointList;
 import com.graphhopper.util.StopWatch;
-import com.mapbox.api.directions.v5.models.DirectionsRoute;
-import com.mapbox.services.android.navigation.ui.v5.NavigationLauncher;
-import com.mapbox.services.android.navigation.v5.navigation.NavigationRoute;
 
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme;
 import org.mapsforge.map.rendertheme.XmlRenderTheme;
@@ -55,24 +60,25 @@ import org.osmdroid.views.overlay.Polyline;
 import java.io.File;
 import java.io.FileFilter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements OnRouteChange{
     private MapView mapView;
     private IMapController mapController;
     AlertDialog alertDialog = null;
     MapsForgeTileProvider forge = null;
-    private GraphHopper hopper;
+    public static GraphHopper hopper;
     private volatile boolean prepareInProgress = false;
     private Polyline pathLayer = null;
     private volatile boolean shortestPathRunning = false;
-    private File mapsFolder;
     private String currentArea = "bhutan";
+    public static PathRouteProgress currentRoute;
+    NavigationService navigationService;
+    boolean isBound = false;
 
 
     @Override
@@ -80,28 +86,16 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mapView = (MapView) findViewById(R.id.mapview);
+
         MapsForgeTileSource.createInstance(this.getApplication());
         ImageButton imgbtn = (ImageButton)findViewById(R.id.imageButton);
         Button getRoute = findViewById(R.id.getRoute);
+        Button navigate = findViewById(R.id.navigate);
         requestPermission();
 
         Set<File> mapfiles = findMapFiles();
         File[] maps = new File[mapfiles.size()];
         maps = mapfiles.toArray(maps);
-        boolean greaterOrEqKitkat = Build.VERSION.SDK_INT >=19;
-        if(greaterOrEqKitkat){
-            if(!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)){
-                Log.e("kinley","Graphhopper navigation not usable without a storage");
-                return;
-            }
-            mapsFolder = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),"/graphhopper/maps/");
-        }else{
-            mapsFolder = new File(Environment.getExternalStorageDirectory(),"/graphhopper/maps/");
-            if(!mapsFolder.exists()){
-                mapsFolder.mkdirs();
-            }
-        }
-
 
         if(maps == null || maps.length == 0){
             AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(
@@ -159,26 +153,25 @@ public class MainActivity extends AppCompatActivity {
             mapView.setBuiltInZoomControls(false);
 
             mapController = mapView.getController();
-            mapController.setZoom(8.0);
-            mapController.setCenter(new GeoPoint(27.5142, 90.4336));
+            mapController.setZoom(15.0);
+            mapController.setCenter(new GeoPoint(27.4712, 89.6339));
         }
-        loadGraphStorage();
 
+        navigate.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(currentRoute !=null){
+                    Intent intent = new Intent(MainActivity.this,NavigationActivity.class);
+                    startActivity(intent);
+                }else{
+                    Toast.makeText(MainActivity.this, "Route not selected", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
         getRoute.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
-                if(!isReady()){
-                    Log.e("kinley","map not ready");
-                    return;
-                }
-                if(shortestPathRunning){
-                    Log.e("kinley","Calculation in progress");
-                    return;
-                }else{
-                    Log.e("kinley","caludating path");
-                    calcPath(27.475302, 89.636357,27.429945, 89.646892);
-                }
+                navigationService.calcPath(27.475302, 89.636357,27.429945, 89.646892);
             }
         });
         imgbtn.setOnClickListener(new View.OnClickListener() {
@@ -189,6 +182,28 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Intent intent = new Intent(this, NavigationService.class);
+        startService(intent);
+        bindService(intent, navigationServiceConnection, BIND_AUTO_CREATE);
+    }
+
+    @Override
+    protected void onPostResume() {
+        super.onPostResume();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if(isBound){
+            unbindService(navigationServiceConnection);
+            isBound = false;
+        }
+    }
+
     private void requestPermission(){
         String [] reqPermission = new String [] {Manifest.permission.READ_EXTERNAL_STORAGE};
         int request_code = 2;
@@ -197,18 +212,6 @@ public class MainActivity extends AppCompatActivity {
         }else{
             ActivityCompat.requestPermissions(MainActivity.this,reqPermission,request_code);
         }
-    }
-
-    boolean isReady() {
-        // only return true if already loaded
-        if (hopper != null)
-            return true;
-        if (prepareInProgress) {
-            Log.e("kinley","Preparation still in progress");
-            return false;
-        }
-        Log.e("kinley","Prepare finished but GraphHopper not ready. This happens when there was an error while loading the files");
-        return false;
     }
 
     protected Set<File> findMapFiles(){
@@ -238,33 +241,6 @@ public class MainActivity extends AppCompatActivity {
         return res;
     }
 
-    void loadGraphStorage(){
-        new GHAsyncTask<Void, Void, Path>() {
-            protected Path saveDoInBackground(Void... v) {
-                GraphHopper tmpHopp = new GraphHopper().forMobile();
-                tmpHopp.setProfiles(new Profile("car").setVehicle("car").setWeighting("fastest"));
-                tmpHopp.getCHPreparationHandler().setCHProfiles(new CHProfile("car"));
-                tmpHopp.load(new File(mapsFolder, currentArea).getAbsolutePath() + "-gh");
-                hopper = tmpHopp;
-                return null;
-            }
-
-            protected void onPostExecute(Path o) {
-                if (hasError()) {
-                    Log.e("kinley","error creating graph"+getErrorMessage());
-                } else {
-                    Log.d("kinley","graph created");
-                }
-
-                finishPrepare();
-            }
-        }.execute();
-    }
-
-    private void finishPrepare(){
-        prepareInProgress = false;
-    }
-
     public Polyline createPathLayer(ResponsePath resp){
         Polyline pline = new Polyline();
         List<GeoPoint> gp = new ArrayList<>();
@@ -277,38 +253,38 @@ public class MainActivity extends AppCompatActivity {
         return pline;
     }
 
-    public void calcPath(final double fromlat, final double fromlng, final double tolat, final double tolng){
-        new AsyncTask<Void, Void, ResponsePath>(){
-            float time;
-            protected ResponsePath doInBackground(Void... v){
-                StopWatch sw = new StopWatch().start();
-                GHRequest req = new GHRequest(fromlat,fromlng,tolat,tolng).setProfile("car");
-                req.getHints().putObject(Parameters.Routing.INSTRUCTIONS,true);
-                GHResponse resp = hopper.route(req);
 
-//                DirectionsRoute route = DirectionsRoute.builder().distance(15.2).duration(12.1).geometry(resp.getBest().getPoints().toString()).voiceLanguage("en").build();
-                Log.e("Kinley",resp.getBest().getInstructions().toString());
+    private ServiceConnection navigationServiceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            NavigationService.NavigationBinder binderBrdige = (NavigationService.NavigationBinder) service;
+            navigationService = binderBrdige.getService();
+            navigationService.setOnRouteChangeListener(MainActivity.this);
+            isBound = true;
+        }
 
-                time = sw.stop().getSeconds();
-                if(resp.getAll().isEmpty()){
-                    return null;
-                }
-                return resp.getBest();
-            }
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isBound = false;
+            navigationService = null;
 
-            protected void onPostExecute(ResponsePath resp){
-                if(resp == null){
-                    Log.e("kinley","cannot find path");
-                }else if (!resp.hasErrors()){
-                    pathLayer = createPathLayer(resp);
-                    mapView.getOverlayManager().add(pathLayer);
-                    mapView.invalidate();
-                }else{
-                    Log.e("kinley","error rendering path");
-                }
-                shortestPathRunning = false;
-            }
-        }.execute();
+        }
+    };
+
+    @Override
+    public void onRouteChange(ResponsePath responsePath) {
+
+        PathRouteProgress newroute = new PathRouteProgress(responsePath,responsePath.getDistance());
+        this.currentRoute = newroute;
+
+        if(!mapView.getOverlays().isEmpty()){
+            mapView.getOverlays().remove(0);
+        }
+        Polyline route = createPathLayer(responsePath);
+
+        route.getOutlinePaint().setColor(Color.rgb(66, 147, 245));
+        route.getOutlinePaint().setStrokeWidth(15.0f);
+        mapView.getOverlays().add(0,route);
+        mapView.invalidate();
     }
-
 }

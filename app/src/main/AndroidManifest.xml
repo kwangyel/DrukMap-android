@@ -22,6 +22,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".splash"
+            android:label="@string/app_name" >
+<!--            <intent-filter>-->
+<!--                <action android:name="android.intent.action.MAIN" />-->
+<!--                <category android:name="android.intent.category.LAUNCHER" />-->
+<!--            </intent-filter>-->
+        </activity>
+        <activity
+            android:name=".NavigationActivity"
+            android:label="@string/app_name" ></activity>
+        <service android:name=".services.NavigationService"/>
+        <service android:name=".test.MockLocationService"/>
+        <service android:name=".services.VoiceInstructionService"/>
+        <meta-data
+            android:name="preloaded_fonts"
+            android:resource="@array/preloaded_fonts" />
     </application>
+
 
 </manifest>
