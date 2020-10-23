@@ -23,6 +23,7 @@ import com.graphhopper.util.Instruction;
 import com.graphhopper.util.InstructionList;
 import com.graphhopper.util.PointList;
 
+import org.mapsforge.map.android.layers.MyLocationOverlay;
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme;
 import org.mapsforge.map.rendertheme.XmlRenderTheme;
 import org.osmdroid.api.IMapController;
@@ -38,6 +39,8 @@ import org.osmdroid.util.MapTileIndex;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.Polyline;
+import org.osmdroid.views.overlay.compass.CompassOverlay;
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -59,7 +62,7 @@ public class NavigationActivity extends AppCompatActivity implements OnLocationC
     MockLocationEngine mockLocationEngine = new MockLocationEngine();
     private final int CURRENT_LOCATION_MARKER_INDEX = 1;
 
-
+    MediaPlayer arrival,turnLeft,turnRight,straight;
 
 //    MockLocationService mockLocationService;
     VoiceInstructionService voiceInstructionService;
@@ -72,6 +75,7 @@ public class NavigationActivity extends AppCompatActivity implements OnLocationC
     List<GeoPoint> locationUpdatePoints = new ArrayList<>();
     RouteProcessor routeProcessor = new RouteProcessor();
     Thread thread;
+    Polyline routePolyline = null;
 
 
     @Override
@@ -148,27 +152,36 @@ public class NavigationActivity extends AppCompatActivity implements OnLocationC
             mapView.setMultiTouchControls(true);
             mapView.setBuiltInZoomControls(false);
 
+//            MyLocationNewOverlay myLocationNewOverlay = new MyLocationNewOverlay(,mapView);
+//            CompassOverlay compassOverlay = new CompassOverlay(this,mapView);
+//            compassOverlay.enableCompass();
+//            mapView.getOverlayManager().add(compassOverlay);
+
+
+
             mapController = mapView.getController();
             mapController.setCenter(new GeoPoint(27.4712, 89.6339));
             mapController.setZoom(15.0);
 
 
-            //setup current location marker
-
-
-            Polyline routePolyline = null;
             if(navigationRoute!= null){
                 routePolyline = createPathLayer(navigationRoute.getPath());
                 mapView.getOverlays().add(routePolyline);
             }
+
+            //prepare voice instruction
+            prepareVoiceInstruction();
         }
 
+        //the navigate button
         navigate.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Log.e("kinley","Starting the location engin from thread: "+Thread.currentThread().getName());
-
+//                mapView.zoomToBoundingBox(routePolyline.getBounds(),true);
+                mapView.zoomToBoundingBox(routePolyline.getBounds(),true,0,22.0,null);
                 thread.start();
+
 //                Log.e("kinley",navigationRoute.getPath().toString());
 //                ResponsePath pr = navigationRoute.getPath();
 //                mockLocationService.generateMockLocation(pr);
@@ -300,8 +313,11 @@ public class NavigationActivity extends AppCompatActivity implements OnLocationC
         }
     };
 
-    public void updateMarker(GeoPoint newLocation){
+    public void updateMarker(GeoPoint newLocation, float bearing){
         Marker newMarker = new Marker(mapView);
+        newMarker.setIcon(getResources().getDrawable(R.drawable.ic_arrow_head));
+        newMarker.setAnchor(Marker.ANCHOR_CENTER,Marker.ANCHOR_CENTER);
+        newMarker.setRotation(bearing);
         if(mapView.getOverlays().size() >= 2){
             mapView.getOverlayManager().remove(CURRENT_LOCATION_MARKER_INDEX);
         }
@@ -310,45 +326,108 @@ public class NavigationActivity extends AppCompatActivity implements OnLocationC
         mapView.invalidate();
     }
 
+    public void prepareVoiceInstruction(){
+        straight= MediaPlayer.create(this, R.raw.straight);
+        turnLeft = MediaPlayer.create(this,R.raw.left);
+        turnRight = MediaPlayer.create(this,R.raw.right);
+        arrival = MediaPlayer.create(this,R.raw.arrival);
+    }
+
+
+
     @Override
     public void OnLocationChange(GeoPoint newLocation) {
-        runOnUiThread(new Runnable() {
-            public void run() {
-                updateMarker(newLocation);
-            }
-        });
         PathRouteProgress updatedRoute = routeProcessor.buildNewRouteProgress(newLocation,navigationRoute);
+
+        int currentLegIndex = updatedRoute.getLegIndex();
+
+        //testing these bearings for the locations. For production might need to obtain bearing for the routes. The given bearings seem to me wrong.
+        double testbearing = updatedRoute.getPath().getInstructions().get(currentLegIndex).calcAzimuth(updatedRoute.getPath().getInstructions().get(currentLegIndex));
+        String stringdirection = updatedRoute.getPath().getInstructions().get(currentLegIndex).calcDirection(updatedRoute.getPath().getInstructions().get(currentLegIndex));
+
+        double bearing;
+
+        switch(stringdirection){
+            case "N" :
+                bearing = 0;
+                break;
+            case "S":
+                bearing = 180;
+                break;
+            case "E":
+                bearing = 90;
+                break;
+            case "W":
+                bearing = 270;
+                break;
+            default:
+                bearing = 0;
+                break;
+        };
+
+
+
+        Log.e("kinley",String.valueOf(bearing));
+        Log.e("kinley",String.valueOf(testbearing));
+
 //        Log.e("kinley","the step is distance remainign" + navigationRoute.getStepDistanceRemaining());
 //        Log.e("kinley","the step is " + navigationRoute.getLegIndex());
+        runOnUiThread(new Runnable() {
+            public void run() {
+                updateMarker(updatedRoute.getCurrentSnappedLocation(),(float) testbearing);
+                mapController.animateTo(updatedRoute.getCurrentSnappedLocation(),null,null,(float) (testbearing));
+            }
+        });
+
         if(updatedRoute.getStepDistanceRemaining() < 50){
-            int currentLegIndex = updatedRoute.getLegIndex();
             if( currentLegIndex == (updatedRoute.getLegs() - 1)){
                 if(updatedRoute.getPath().getInstructions().get(currentLegIndex).getSign() == 4){
                     Log.e("kinley","you have arrived");
-                    voiceInstructionService.arrival();
+                    arrival.start();
                 }
-            }
-            Instruction nextManeuver = updatedRoute.getPath().getInstructions().get(currentLegIndex + 1);
-            int direction = nextManeuver.getSign();
-            switch (direction){
-                case -1: case -2: case -3:
-                    Log.e("kinley","Turn left");
-                    voiceInstructionService.turnLeft();
-                    break;
-                case 1: case 2: case 3:
-                    Log.e("kinley","Turn right");
-                    voiceInstructionService.turnRight();
-                    break;
-                case 0:
-                    voiceInstructionService.straight();
-                    Log.e("kinley","Go straight");
-                    break;
-                default:
-                    Toast.makeText(this, "Unknokwn direction", Toast.LENGTH_SHORT).show();
-                    break;
+            }else {
+                Instruction nextManeuver = updatedRoute.getPath().getInstructions().get(currentLegIndex + 1);
+                int direction = nextManeuver.getSign();
+                switch (direction) {
+                    case -1:
+                    case -2:
+                    case -3:
+                        Log.e("kinley", "Turn left");
+                        turnLeft.start();
+                        break;
+                    case 1:
+                    case 2:
+                    case 3:
+                        Log.e("kinley", "Turn right");
+                        turnRight.start();
+                        break;
+                    case 0:
+                        straight.start();
+                        Log.e("kinley", "Go straight");
+                        break;
+                    case 4:
+                        arrival.start();
+                        break;
+                    default:
+                        Log.e("kinley", "Unknown direction" + String.valueOf(direction));
+                        break;
+                }
             }
         }
 
 //        Log.e("kinley","Location updated: "+ newLocation.toDoubleString());
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        arrival.stop();
+        arrival.release();
+        turnRight.stop();
+        turnRight.release();
+        turnLeft.stop();
+        turnLeft.release();
+        straight.stop();
+        straight.release();
     }
 }

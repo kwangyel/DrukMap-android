@@ -36,13 +36,16 @@ public class RouteProcessor {
     }
 
 
-    static double calculateDistanceRemaining(GeoPoint location , PathRouteProgress path){
+    double calculateDistanceRemaining(GeoPoint location , PathRouteProgress path){
         int legIndex = path.getLegIndex();
         GeoPoint snappedPosition = snappedPosition(location , path.getPath().getPoints());
+
+        //this is used in navigation ui update
+        route.setCurrentSnappedLocation(snappedPosition);
         return stepDistanceRemaining(snappedPosition,legIndex,path);
     }
 
-    static double stepDistanceRemaining(GeoPoint snappedPostition, int legIndex, PathRouteProgress route){
+    double stepDistanceRemaining(GeoPoint snappedPostition, int legIndex, PathRouteProgress route){
         PointList pts = route.getPath().getInstructions().get(legIndex).getPoints();
         GeoPoint nextturnpoint = nextTurnPoint(legIndex,route.getPath().getInstructions(), pts);
 
@@ -52,7 +55,7 @@ public class RouteProcessor {
         return TurfMeasurement.distance(snappedPostition,nextturnpoint, TurfConstants.UNIT_METERS);
     }
 
-    static GeoPoint nextTurnPoint (int legIndex, InstructionList instructions, PointList coords){
+    GeoPoint nextTurnPoint (int legIndex, InstructionList instructions, PointList coords){
         //return last point of the point list although this is not the real last point
         if(instructions.size() > (legIndex + 1)){
             PointList pt = instructions.get(legIndex + 1).getPoints();
@@ -62,7 +65,7 @@ public class RouteProcessor {
         return new GeoPoint(pt.getLatitude(pt.size()-1),pt.getLongitude(pt.size()-1));
     }
 
-    static GeoPoint snappedPosition(GeoPoint location, PointList coordinates){
+    GeoPoint snappedPosition(GeoPoint location, PointList coordinates){
        if(coordinates.getSize() < 2){
            return location;
        }
@@ -70,6 +73,4 @@ public class RouteProcessor {
        GeoPoint feature = TurfMisc.nearestPointOnLine(location,coordinates);
        return feature;
     }
-
-
 }

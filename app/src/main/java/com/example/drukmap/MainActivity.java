@@ -1,6 +1,7 @@
 package com.example.drukmap;
 
 import android.Manifest;
+import android.app.ActivityOptions;
 import android.content.ComponentName;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -10,6 +11,7 @@ import android.graphics.Color;
 import android.graphics.Path;
 import android.icu.util.ICUUncheckedIOException;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 
 import androidx.appcompat.app.AlertDialog;
@@ -22,6 +24,7 @@ import android.os.IBinder;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
@@ -42,6 +45,8 @@ import com.graphhopper.util.StopWatch;
 
 import org.mapsforge.map.android.rendertheme.AssetsRenderTheme;
 import org.mapsforge.map.rendertheme.XmlRenderTheme;
+import org.mapsforge.poi.android.storage.AndroidPoiPersistenceManagerFactory;
+
 import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.mapsforge.MapsForgeTileProvider;
@@ -91,6 +96,7 @@ public class MainActivity extends AppCompatActivity implements OnRouteChange{
         ImageButton imgbtn = (ImageButton)findViewById(R.id.imageButton);
         Button getRoute = findViewById(R.id.getRoute);
         Button navigate = findViewById(R.id.navigate);
+        EditText editText = findViewById(R.id.searchbar);
         requestPermission();
 
         Set<File> mapfiles = findMapFiles();
@@ -171,7 +177,8 @@ public class MainActivity extends AppCompatActivity implements OnRouteChange{
         getRoute.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                navigationService.calcPath(27.475302, 89.636357,27.429945, 89.646892);
+//                navigationService.calcPath(27.475302, 89.636357,27.429945, 89.646892);
+                navigationService.calcPath(27.429859, 89.646937,27.428599, 89.645800);
             }
         });
         imgbtn.setOnClickListener(new View.OnClickListener() {
@@ -180,6 +187,20 @@ public class MainActivity extends AppCompatActivity implements OnRouteChange{
                 mapView.setTileProvider(forge);
             }
         });
+
+        editText.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+               Intent intent = new Intent(MainActivity.this,SearchViewer.class);
+               if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP){
+                   ActivityOptions options = ActivityOptions.makeSceneTransitionAnimation(MainActivity.this,editText,"searchbar");
+                   startActivity(intent,options.toBundle());
+               }else{
+                   startActivity(intent);
+               }
+            }
+        });
+
     }
 
     @Override

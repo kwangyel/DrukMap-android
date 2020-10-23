@@ -21,6 +21,7 @@
         android:layout_marginTop="20dp"
         android:layout_marginRight="10dp"
         android:background="@drawable/rounded_edit_text"
+        android:id="@+id/searchbar"
         android:hint="Search place"
         android:paddingLeft="30dp"
         android:paddingRight="10dp">

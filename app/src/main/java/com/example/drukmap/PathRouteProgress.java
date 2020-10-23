@@ -3,10 +3,13 @@ package com.example.drukmap;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.util.Instruction;
 
+import org.osmdroid.util.GeoPoint;
+
 public class PathRouteProgress {
    private ResponsePath path;
    private double stepDistanceRemaining;
    private int legIndex = 0;
+   private GeoPoint currentSnappedLocation;
 
 
    public PathRouteProgress(ResponsePath p, double d){
@@ -50,5 +53,13 @@ public class PathRouteProgress {
    }
    public int getLegs(){
       return this.path.getInstructions().size();
+   }
+
+   public void setCurrentSnappedLocation(GeoPoint currentSnappedLocation) {
+      this.currentSnappedLocation = currentSnappedLocation;
+   }
+
+   public GeoPoint getCurrentSnappedLocation() {
+      return currentSnappedLocation;
    }
 }
